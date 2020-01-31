@@ -2,27 +2,6 @@ import pandas as pd
 import pickle
 import re
 
-with open("/home/amosbrazzoli/Downloads/X-SAMPA-Wikipedia.html",  'r', encoding="utf-8") as xsampa_page:
-    content = xsampa_page.read()
-    row = r'''<td><code>(.*)</code></td>\n<td><span title=".*" class="IPA">(.*)</span></td>\n<td><a\b.*/></a></td>\n<td><a href=".*".*title="([\w&\s]*)">.*</a></td>'''
-    pattern = re.compile(row)
-    matches = pattern.finditer(content)
-    out = []
-    for match in matches:
-        out.append(match.group(1,2,3))
-
-df = pd.DataFrame.from_records(out, columns=["XSAMPA","IPA","Desc"])
-df["Length"] = df.XSAMPA.apply(len)
-
-xsampa = df.XSAMPA.to_list()
-ipa = df.IPA.to_list()
-lenght = df.Length.to_list()
-
-out_dict = {}
-# Structured as { lenght : {xsampa : ipa, ...}, ...}
-for x, i, l in zip(xsampa, ipa, lenght):
-    out_dict.setdefault(l,{}).update({x: i})
-
 class XSAMPAEntity:
     def __init__(self):
         self.xsampa = ''
@@ -30,14 +9,47 @@ class XSAMPAEntity:
         self.description = False
         self.lenght = False
         self.stressed = False
-        self.modifiers = False
+        self.attribute = ''
 
     def __repr__(self):
-        return self.ipa
+        if self.attribute == '':
+            return self.ipa
+        else:
+            return f'{self.ipa}-{self.attribute}'
+    def is_None(self):
+        if self.xsampa == '':
+            return True
+        else: False
+
+    def has_attribute(self):
+        if self.attribute == '':
+            return True
+        else: False
+
+class XHolder(list):
+    def __init__(self, *args):
+        super().__init__(args)
+
+    def __str__(self):
+        out = []
+        for item in args:
+            if item.is_None():
+                item = ' '
+            elif item.has_attribute():
+                # find a way to render ipa attirbtes
+                pass
+        return ''.join(out)
 
 class XSAMPA:
     def __init__(self):
+        df = pd.read_csv('XSAMPA-IPA.csv')
+        out_dict = pd.Series(df.IPA.values, index=df.XSAMPA).to_dict()
+        del(df)
+        dg = pd.read_csv('Attirbutes_Table.csv')
+        attr_dict = pd.Series(dg.IPA.values, index=dg.XSAMPA).to_dict()
+        del(dg)
         self.dict = out_dict
+        self.attr_dict = attr_dict
         self.parsed = []
 
     def parse(self, file):
@@ -86,6 +98,13 @@ class XSAMPA:
         yield temp
 
     def token_reco(self, token):
+        '''
+        How it shoul be done:
+        1. Recognoise prefix and suffix
+        2. Makes object
+        3. Object rendes utf-8 IPA representation
+
+        '''
         par_token = XSAMPAEntity()
         if len(token) == 0:
             return None
@@ -99,19 +118,13 @@ class XSAMPA:
                 par_token.stressed = 2
                 token = token[1:]
             elif token[-2] == "_":
-                par_token.attribute = token[-2:]
+                par_token.attribute = self.attr_dict[token[-2:]]
                 token = token[:-2]
 
         par_token.xsampa = token
-        par_token.ipa = self.dict[len(token)][token]
+        par_token.ipa = self.dict[token]
         return par_token
 
     def reco(self, word):
         for token in self.break_word(word):
             self.parsed.append(self.token_reco(token))
-
-
-in_string = '''ai m_< "im@s'''
-parser = XSAMPA()
-parser.parse(in_string)
-print(parser.parsed)
